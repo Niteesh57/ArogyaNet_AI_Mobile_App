@@ -1,0 +1,12 @@
+# specific files to ignore
+node_modules/
+.expo/
+*.jks
+*.p12
+*.key
+*.keystore
+
+# Do NOT ignore package.json or app.json
+!package.json
+!app.json
+!eas.json

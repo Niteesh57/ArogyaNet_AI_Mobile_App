@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "arogyaMobile",
+    "slug": "arogyaMobile",
+    "scheme": "arogyamobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.arogyaMobile"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2078a1eb-39e8-49f0-8caa-c68e89cb6dae"
+      }
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-asset"
+    ]
+  }
+}
