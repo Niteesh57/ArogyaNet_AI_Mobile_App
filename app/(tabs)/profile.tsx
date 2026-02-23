@@ -15,7 +15,7 @@ export default function ProfileScreen() {
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [saving, setSaving] = useState(false);
-    const [modelUrl, setModelUrl] = useState("https://huggingface.co/lmstudio-ai/gemma-2b-it-GGUF/resolve/main/gemma-2b-it-q4_k_m.gguf"); // Or any other default link you prefer
+    const [modelUrl, setModelUrl] = useState("https://huggingface.co/nagireddy5/medgemma_Q3_K_M_Edge/resolve/main/medgemma-Q3_K_M.gguf");
 
     const {
         downloadProgress,

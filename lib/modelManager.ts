@@ -41,10 +41,18 @@ export const useModelManager = () => {
         setDownloadProgress(0);
 
         try {
+            const headers: Record<string, string> = {};
+            const hfKey = process.env.EXPO_PUBLIC_HUGGINGFACE_API_KEY || """";
+
+            // Add auth token for huggingface URLs to support gated/private models
+            if (url.includes("huggingface.co")) {
+                headers["Authorization"] = `Bearer ${hfKey}`;
+            }
+
             const resumable = FileSystem.createDownloadResumable(
                 url,
                 getModelPath(),
-                {},
+                { headers },
                 downloadProgressCallback
             );
 
