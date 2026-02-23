@@ -1,10 +1,10 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
     View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
     Alert, Platform, Image, StyleSheet
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Camera, Sparkles, X, FileText, Upload, RefreshCcw } from "lucide-react-native";
+import { Camera, Sparkles, X, FileText, Upload, RefreshCcw, WifiOff, Clock, Trash2 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { documentsApi } from "../../lib/api";
 import { fetchStream } from "../../lib/streaming";
@@ -14,6 +14,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Markdown from "react-native-markdown-display";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.29.67:8000/api/v1";
+const QUEUE_KEY = "@analyzer_offline_queue";
+
+interface QueuedItem {
+    id: string;
+    image: string;
+    status: "queued" | "processing" | "completed" | "error";
+    summary: string;
+}
 
 export default function AnalyzerScreen() {
     const [image, setImage] = useState<string | null>(null);
@@ -22,15 +30,46 @@ export default function AnalyzerScreen() {
     const [status, setStatus] = useState("");
     const [isOffline, setIsOffline] = useState(false);
     const [modelAvailable, setModelAvailable] = useState(false);
+    const [queue, setQueue] = useState<QueuedItem[]>([]);
     const scrollRef = useRef<ScrollView>(null);
 
-    React.useEffect(() => {
+    // Initial loads
+    useEffect(() => {
+        loadQueue();
+        checkModel();
+
         const unsubscribe = NetInfo.addEventListener(state => {
             setIsOffline(!state.isConnected);
         });
-        checkModel();
         return () => unsubscribe();
     }, []);
+
+    // Sync queue when coming online
+    useEffect(() => {
+        if (!isOffline && queue.length > 0) {
+            processQueue();
+        }
+    }, [isOffline]);
+
+    const loadQueue = async () => {
+        try {
+            const stored = await AsyncStorage.getItem(QUEUE_KEY);
+            if (stored) {
+                setQueue(JSON.parse(stored));
+            }
+        } catch (e) {
+            console.error("Failed to load queue", e);
+        }
+    };
+
+    const saveQueue = async (newQueue: QueuedItem[]) => {
+        try {
+            await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(newQueue));
+            setQueue(newQueue);
+        } catch (e) {
+            console.error("Failed to save queue", e);
+        }
+    };
 
     const checkModel = async () => {
         const available = await isLocalModelAvailable();
@@ -65,93 +104,166 @@ export default function AnalyzerScreen() {
     const startAnalysis = async () => {
         if (!image) return;
 
-        setAnalyzing(true);
-        setSummary("");
-        setStatus(isOffline ? "Analyzing locally..." : "Uploading report...");
-
         if (isOffline) {
+            // Check queue limit
+            const pendingItems = queue.filter(q => q.status === "queued" || q.status === "processing" || q.status === "error");
+            if (pendingItems.length >= 2) {
+                Alert.alert("Queue Full", "You can only queue a maximum of 2 offline reports at a time.");
+                return;
+            }
+
+            // Generate generic offline response
+            setAnalyzing(true);
+            setStatus("Preparing local AI model...");
+            setSummary("");
             try {
-                // Since local model is text-only (usually), we inform the user to ask questions instead
-                // or if we had OCR we'd use it. For now, we use a custom prompt.
-                setStatus("Preparing local AI model...");
                 const prompt = "I have a medical report image here. I am offline, so please provide a general guide on how to read common medical reports while I wait for internet to do a full scan.";
                 const response = await askAI(prompt);
                 setSummary(response);
                 setStatus("Complete (Local Mode)");
             } catch (err: any) {
-                Alert.alert("Local AI Error", err.message);
+                Alert.alert("Local AI Error", "Could not run local model. Please download the MedGemma model from your Profile settings.");
             } finally {
                 setAnalyzing(false);
             }
+
+            // Save to offline queue for actual processing later
+            const newItem: QueuedItem = {
+                id: Date.now().toString(),
+                image: image,
+                status: "queued",
+                summary: ""
+            };
+            await saveQueue([...queue, newItem]);
             return;
         }
 
+        // Online Flow
+        setAnalyzing(true);
+        setSummary("");
+        setStatus("Uploading report...");
+
         try {
-            // 1. Upload image
-            const formData = new FormData();
-            formData.append("title", "report_analyzer_" + Date.now());
-
-            if (Platform.OS === 'web') {
-                const response = await fetch(image);
-                const blob = await response.blob();
-                formData.append("file", blob, "report.jpg");
-            } else {
-                formData.append("file", {
-                    uri: image,
-                    name: "report.jpg",
-                    type: "image/jpeg",
-                } as any);
-            }
-
-            const uploadRes = await documentsApi.upload(formData);
-            const imageUrl = uploadRes.data.file_url;
-
-            // 2. Start SSE Streaming
-            setStatus("Analyzing with AI...");
-            const token = await AsyncStorage.getItem("lh_token");
-
-            // Using fetch for SSE as axios doesn't support streaming well in RN
-            let accumulated = "";
-
-            await fetchStream(`${API_URL}/agent/summarize-medical-report`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({ image_url: imageUrl }),
-                onChunk: (chunk) => {
-                    const lines = chunk.split("\n");
-                    for (const line of lines) {
-                        if (line.startsWith("data: ")) {
-                            try {
-                                const data = JSON.parse(line.substring(6));
-                                if (data.type === "token") {
-                                    accumulated += data.content;
-                                    setSummary(accumulated);
-                                    // Auto-scroll to bottom
-                                    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-                                } else if (data.type === "done") {
-                                    setStatus("Complete");
-                                } else if (data.type === "error") {
-                                    Alert.alert("AI Error", data.message);
-                                }
-                            } catch (e) {
-                                // Skip non-json segments
-                            }
-                        }
-                    }
-                },
-                onError: (err) => {
-                    throw err;
-                }
-            });
+            await processSingleImage(image, (chunkStr) => {
+                setSummary(prev => {
+                    const next = prev + chunkStr;
+                    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+                    return next;
+                });
+            }, setStatus);
         } catch (e: any) {
             Alert.alert("Analysis Failed", e?.message || "Something went wrong");
         } finally {
             setAnalyzing(false);
             if (status !== "Complete") setStatus("");
         }
+    };
+
+    // Shared upload & SSE fetch logic
+    const processSingleImage = async (
+        imgUri: string,
+        onChunk: (text: string) => void,
+        onStatus: (s: string) => void
+    ) => {
+        // 1. Upload image
+        const formData = new FormData();
+        formData.append("title", "report_analyzer_" + Date.now());
+
+        if (Platform.OS === 'web') {
+            const response = await fetch(imgUri);
+            const blob = await response.blob();
+            formData.append("file", blob, "report.jpg");
+        } else {
+            formData.append("file", {
+                uri: imgUri,
+                name: "report.jpg",
+                type: "image/jpeg",
+            } as any);
+        }
+
+        const uploadRes = await documentsApi.upload(formData);
+        const imageUrl = uploadRes.data.file_url;
+
+        // 2. Start SSE Streaming
+        onStatus("Analyzing with AI...");
+        const token = await AsyncStorage.getItem("lh_token");
+
+        await fetchStream(`${API_URL}/agent/summarize-medical-report`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ image_url: imageUrl }),
+            onChunk: (chunk) => {
+                const lines = chunk.split("\n");
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const data = JSON.parse(line.substring(6));
+                            if (data.type === "token") {
+                                onChunk(data.content);
+                            } else if (data.type === "done") {
+                                onStatus("Complete");
+                            } else if (data.type === "error") {
+                                console.error("AI Error:", data.message);
+                                onStatus("Error");
+                            }
+                        } catch (e) {
+                            // Skip non-json segments
+                        }
+                    }
+                }
+            },
+            onError: (err) => {
+                throw err;
+            }
+        });
+    };
+
+    const processQueue = async () => {
+        const currentQueue = [...queue]; // Use local copy to mutate
+        let hasChanges = false;
+
+        for (let i = 0; i < currentQueue.length; i++) {
+            const item = currentQueue[i];
+            if (item.status === "queued" || item.status === "error") {
+                hasChanges = true;
+                currentQueue[i] = { ...item, status: "processing", summary: "" };
+                setQueue([...currentQueue]); // Update UI immediately
+
+                try {
+                    await processSingleImage(
+                        item.image,
+                        (chunkStr) => {
+                            currentQueue[i].summary += chunkStr;
+                            setQueue([...currentQueue]); // Re-render chunks
+                        },
+                        (newStatus) => {
+                            if (newStatus === "Complete") {
+                                currentQueue[i].status = "completed";
+                            } else if (newStatus === "Error") {
+                                currentQueue[i].status = "error";
+                            }
+                            setQueue([...currentQueue]);
+                        }
+                    );
+                } catch (e) {
+                    console.error("Failed queued item:", e);
+                    currentQueue[i].status = "error";
+                    setQueue([...currentQueue]);
+                }
+            }
+        }
+
+        if (hasChanges) {
+            await saveQueue([...currentQueue]);
+        }
+    };
+
+    const removeQueuedItem = async (id: string) => {
+        const newQueue = queue.filter(q => q.id !== id);
+        await saveQueue(newQueue);
     };
 
     return (
@@ -164,9 +276,16 @@ export default function AnalyzerScreen() {
                     </View>
                     <View>
                         <Text className="text-gray-900 font-bold text-lg">AI Report Analyzer</Text>
-                        <Text className="text-gray-400 text-xs text-uppercase">
-                            {isOffline ? (modelAvailable ? "Local MedGemma" : "Offline") : "Powered by Gemini 1.5"}
-                        </Text>
+                        <View className="flex-row items-center gap-1">
+                            {isOffline ? (
+                                <>
+                                    <WifiOff size={10} color="#EF4444" />
+                                    <Text className="text-red-500 text-xs text-uppercase font-medium">Offline Mode</Text>
+                                </>
+                            ) : (
+                                <Text className="text-gray-400 text-xs text-uppercase">Powered by Gemini 1.5</Text>
+                            )}
+                        </View>
                     </View>
                 </View>
                 {image && !analyzing && (
@@ -215,8 +334,8 @@ export default function AnalyzerScreen() {
                             <Text className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-4">How it works</Text>
                             <View className="gap-4">
                                 <StepItem number="1" text="Upload a clear photo of the medical document." />
-                                <StepItem number="2" text="AI analyzes handwriting and complex terminology." />
-                                <StepItem number="3" text="Get a structured summary and recommendations." />
+                                <StepItem number="2" text={isOffline ? "App saves it in queue (Max 2 offline syncs)." : "AI analyzes handwriting and complex terminology."} />
+                                <StepItem number="3" text={isOffline ? "Provides generic offline tips until internet connects." : "Get a structured summary and recommendations."} />
                             </View>
                         </View>
                     </View>
@@ -231,8 +350,8 @@ export default function AnalyzerScreen() {
                                         onPress={startAnalysis}
                                         className="bg-teal-600 rounded-xl py-3 px-8 flex-row items-center gap-2"
                                     >
-                                        <Sparkles size={18} color="white" />
-                                        <Text className="text-white font-bold">Analyze Report</Text>
+                                        {isOffline ? <Clock size={18} color="white" /> : <Sparkles size={18} color="white" />}
+                                        <Text className="text-white font-bold">{isOffline ? "Queue Offline Analysis" : "Analyze Report"}</Text>
                                     </TouchableOpacity>
                                 </View>
                             )}
@@ -242,7 +361,9 @@ export default function AnalyzerScreen() {
                         {(analyzing || summary !== "") && (
                             <View className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
                                 <View className="flex-row items-center justify-between mb-6">
-                                    <Text className="text-gray-900 font-bold text-lg">AI Analysis</Text>
+                                    <Text className="text-gray-900 font-bold text-lg">
+                                        {analyzing && isOffline ? "Local AI Note" : "AI Analysis"}
+                                    </Text>
                                     {analyzing && (
                                         <View className="flex-row items-center gap-2 px-3 py-1 bg-teal-50 rounded-full">
                                             <ActivityIndicator size="small" color="#0D9488" />
@@ -261,11 +382,13 @@ export default function AnalyzerScreen() {
                                         <Markdown style={markdownStyles}>
                                             {summary}
                                         </Markdown>
-                                        {status === "Complete" && (
+                                        {status.includes("Complete") && (
                                             <View className="mt-6 pt-6 border-t border-gray-50 items-center">
                                                 <View className="bg-blue-50 px-4 py-2 rounded-lg flex-row items-center gap-2">
                                                     <FileText size={14} color="#3B82F6" />
-                                                    <Text className="text-blue-600 text-[10px] font-bold uppercase">One-time Analysis · Not Saved</Text>
+                                                    <Text className="text-blue-600 text-[10px] font-bold uppercase">
+                                                        {isOffline ? "Analysis Queued for Online Sync" : "One-time Analysis · Not Saved"}
+                                                    </Text>
                                                 </View>
                                             </View>
                                         )}
@@ -273,6 +396,58 @@ export default function AnalyzerScreen() {
                                 )}
                             </View>
                         )}
+                    </View>
+                )}
+
+                {/* Queued Items Section */}
+                {queue.length > 0 && (
+                    <View className="mt-8">
+                        <View className="flex-row items-center gap-2 mb-4 px-2">
+                            <Clock size={16} color="#6B7280" />
+                            <Text className="text-gray-700 font-bold text-base uppercase tracking-wider">Queued Offline Reports</Text>
+                            <View className="bg-gray-200 px-2 py-0.5 rounded-full ml-auto">
+                                <Text className="text-xs font-bold text-gray-600">{queue.length} / 2</Text>
+                            </View>
+                        </View>
+
+                        <View className="gap-4">
+                            {queue.map((item) => (
+                                <View key={item.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                                    <View className="flex-row items-center justify-between bg-gray-50 p-3 border-b border-gray-100">
+                                        <View className="flex-row items-center gap-2">
+                                            {item.status === "queued" && <Clock size={14} color="#F59E0B" />}
+                                            {item.status === "processing" && <ActivityIndicator size="small" color="#3B82F6" />}
+                                            {item.status === "completed" && <Sparkles size={14} color="#10B981" />}
+                                            {item.status === "error" && <X size={14} color="#EF4444" />}
+                                            <Text className="text-xs font-bold uppercase text-gray-500">
+                                                Status: <Text style={{
+                                                    color: item.status === "queued" ? "#F59E0B"
+                                                        : item.status === "processing" ? "#3B82F6"
+                                                            : item.status === "completed" ? "#10B981"
+                                                                : "#EF4444"
+                                                }}>{item.status}</Text>
+                                            </Text>
+                                        </View>
+                                        <TouchableOpacity onPress={() => removeQueuedItem(item.id)} className="p-1">
+                                            <Trash2 size={16} color="#EF4444" />
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    <View className="p-4 flex-row gap-4">
+                                        <Image source={{ uri: item.image }} className="w-20 h-24 rounded-lg bg-gray-100" />
+                                        <ScrollView className="flex-1 max-h-40" nestedScrollEnabled>
+                                            {item.summary ? (
+                                                <Markdown style={markdownStyles}>{item.summary}</Markdown>
+                                            ) : (
+                                                <Text className="text-gray-400 italic text-sm mt-2">
+                                                    Waiting for network connection to process and summarize this image...
+                                                </Text>
+                                            )}
+                                        </ScrollView>
+                                    </View>
+                                </View>
+                            ))}
+                        </View>
                     </View>
                 )}
             </ScrollView>

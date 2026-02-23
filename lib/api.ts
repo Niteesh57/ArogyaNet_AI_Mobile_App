@@ -45,6 +45,7 @@ export const authApi = {
     register: (data: { user_in: any; hospital_in?: any }) =>
         api.post("/auth/register", data),
     me: () => api.get("/auth/me"),
+    googleLogin: (token: string) => api.post("/auth/google", { token }),
 };
 
 // ─── Users ───

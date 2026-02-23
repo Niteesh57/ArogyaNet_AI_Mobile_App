@@ -1,12 +1,36 @@
-# specific files to ignore
+# Dependencies (EAS installs these on the server)
 node_modules/
+
+# Expo cache
 .expo/
+
+# Git
+.git/
+
+# Android build artifacts (EAS rebuilds from source)
+android/.gradle/
+android/app/build/
+android/build/
+
+# Keystore files
 *.jks
 *.p12
 *.key
 *.keystore
 
-# Do NOT ignore package.json or app.json
+# IDE / editor
+.vscode/
+.idea/
+
+# Debug logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+
+# Do NOT ignore these (required for build)
 !package.json
 !app.json
 !eas.json

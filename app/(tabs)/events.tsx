@@ -1,6 +1,7 @@
 import {
     View, Text, FlatList, TouchableOpacity, RefreshControl,
-    ActivityIndicator, Modal, ScrollView, TextInput, Alert, Platform
+    ActivityIndicator, Modal, ScrollView, TextInput, Alert, Platform,
+    KeyboardAvoidingView
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { eventsApi, agentApi, documentsApi } from "../../lib/api";
@@ -462,166 +463,244 @@ export default function EventsScreen() {
 
             {/* ── Add Entry Modal ── */}
             <Modal visible={addEntryOpen} animationType="fade" transparent>
-                <View className="flex-1 bg-black/50 justify-center items-center px-4">
-                    <View className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
-                        {/* Header */}
-                        <View className="flex-row justify-between items-center px-6 py-5 border-b border-gray-100">
-                            <View>
-                                <Text className="text-lg font-bold text-gray-900">New Entry</Text>
-                                <Text className="text-xs text-gray-400">Add data to {selectedEvent?.event_name}</Text>
+                <View className="flex-1 bg-black/50 justify-end items-center sm:justify-center px-4">
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        className="w-full max-w-lg mb-4 sm:mb-0"
+                    >
+                        <View className="bg-white w-full rounded-3xl overflow-hidden shadow-2xl" style={{ maxHeight: '90%' }}>
+                            {/* Header */}
+                            <View className="flex-row justify-between items-center px-6 py-5 border-b border-gray-100">
+                                <View>
+                                    <Text className="text-lg font-bold text-gray-900">New Entry</Text>
+                                    <Text className="text-xs text-gray-400">Add data to {selectedEvent?.event_name}</Text>
+                                </View>
+                                <TouchableOpacity onPress={() => !scanning && setAddEntryOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center">
+                                    <X size={18} color="#6B7280" />
+                                </TouchableOpacity>
                             </View>
-                            <TouchableOpacity onPress={() => !scanning && setAddEntryOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center">
-                                <X size={18} color="#6B7280" />
-                            </TouchableOpacity>
-                        </View>
 
-                        <ScrollView contentContainerStyle={{ padding: 24 }}>
-                            {/* AI Scan Section */}
-                            {(selectedEvent?.keys || []).length > 0 && (
-                                <View className="mb-6 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 border-dashed items-center">
-                                    <View className="w-14 h-14 bg-blue-100 rounded-full items-center justify-center mb-3">
-                                        <Sparkles size={28} color="#3B82F6" />
-                                    </View>
-                                    <Text className="text-gray-900 font-bold text-center mb-1">AI Smart Extract</Text>
-                                    <Text className="text-gray-500 text-xs text-center mb-4 px-4">Take a photo of a form and let AI auto-fill all the fields for you instantly.</Text>
+                            <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }}>
+                                {/* AI Scan Section */}
+                                {(selectedEvent?.keys || []).length > 0 && (
+                                    <View className="mb-6 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 border-dashed items-center">
+                                        <View className="w-14 h-14 bg-blue-100 rounded-full items-center justify-center mb-3">
+                                            <Sparkles size={28} color="#3B82F6" />
+                                        </View>
+                                        <Text className="text-gray-900 font-bold text-center mb-1">AI Smart Extract</Text>
+                                        <Text className="text-gray-500 text-xs text-center mb-4 px-4">Take a photo of a form and let AI auto-fill all the fields for you instantly.</Text>
 
-                                    <TouchableOpacity
-                                        onPress={async () => {
-                                            if (!selectedEvent) return;
-                                            setScanning(true);
-                                            setScanStatus("Opening camera...");
-                                            try {
-                                                const { status } = await ImagePicker.requestCameraPermissionsAsync();
-                                                if (status !== "granted") {
-                                                    Alert.alert("Permission Denied", "Camera access is required to use AI Scan.");
-                                                    return;
-                                                }
-                                                const result = await ImagePicker.launchCameraAsync({
-                                                    mediaTypes: ['images'],
-                                                    quality: 0.8,
-                                                });
-                                                if (result.canceled || !result.assets?.[0]) {
-                                                    setScanStatus("");
-                                                    setScanning(false);
-                                                    return;
-                                                }
-
-                                                setScanStatus("AI is uploading image...");
-                                                const asset = result.assets[0];
-                                                const formDataUpload = new FormData();
-                                                formDataUpload.append("title", "ai_scan_" + Date.now());
+                                        <TouchableOpacity
+                                            onPress={async () => {
+                                                if (!selectedEvent) return;
 
                                                 if (Platform.OS === 'web') {
-                                                    const response = await fetch(asset.uri);
-                                                    const blob = await response.blob();
-                                                    formDataUpload.append("file", blob, "scan.jpg");
-                                                } else {
-                                                    formDataUpload.append("file", {
-                                                        uri: asset.uri,
-                                                        name: "scan.jpg",
-                                                        type: "image/jpeg",
-                                                    } as any);
-                                                }
-
-                                                const uploadRes = await documentsApi.upload(formDataUpload);
-                                                const imageUrl = uploadRes.data.file_url;
-
-                                                setScanStatus("Preparing MedGemma...");
-                                                let extractedData: any;
-                                                if (isOffline) {
-                                                    const prompt = `Extract medical data for these fields: ${selectedEvent.keys.join(", ")}. Return ONLY a JSON object. Since I am offline, I cannot see the image, so please provide clear placeholder instructions for the user to manually enter ${selectedEvent.keys.join(", ")} while mentioning the model name MedGemma.`;
-                                                    const response = await askAI(prompt);
+                                                    // On web, Alert.alert doesn't work. Go straight to file picker.
+                                                    setScanning(true);
+                                                    setScanStatus("Opening file picker...");
                                                     try {
-                                                        extractedData = JSON.parse(response);
-                                                    } catch {
-                                                        extractedData = {};
-                                                        selectedEvent.keys.forEach(k => extractedData[k] = `[Manual ${k}]`);
+                                                        const result = await ImagePicker.launchImageLibraryAsync({
+                                                            mediaTypes: ['images'],
+                                                            quality: 0.8,
+                                                        });
+                                                        if (!result.canceled && result.assets?.[0]) {
+                                                            handleScanImage(result.assets[0]);
+                                                        } else {
+                                                            setScanStatus("");
+                                                            setScanning(false);
+                                                        }
+                                                    } catch (e: any) {
+                                                        Alert.alert("Error", e?.message || "AI Scan failed.");
+                                                        setScanStatus("");
+                                                        setScanning(false);
                                                     }
                                                 } else {
-                                                    const aiRes = await agentApi.populateEventData({
-                                                        image_url: imageUrl,
-                                                        keys: selectedEvent.keys,
-                                                    });
-                                                    extractedData = aiRes.data;
+                                                    // Native: show Camera/Gallery picker
+                                                    Alert.alert(
+                                                        "Scan Document",
+                                                        "Choose an option to upload your document",
+                                                        [
+                                                            {
+                                                                text: "Camera",
+                                                                onPress: async () => {
+                                                                    setScanning(true);
+                                                                    setScanStatus("Opening camera...");
+                                                                    try {
+                                                                        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                                                                        if (status !== "granted") {
+                                                                            Alert.alert("Permission Denied", "Camera access is required to use AI Scan.");
+                                                                            return;
+                                                                        }
+                                                                        const result = await ImagePicker.launchCameraAsync({
+                                                                            mediaTypes: ['images'],
+                                                                            quality: 0.8,
+                                                                        });
+                                                                        if (!result.canceled && result.assets?.[0]) {
+                                                                            handleScanImage(result.assets[0]);
+                                                                        } else {
+                                                                            setScanStatus("");
+                                                                            setScanning(false);
+                                                                        }
+                                                                    } catch (e: any) {
+                                                                        Alert.alert("Error", e?.message || "AI Scan failed.");
+                                                                        setScanStatus("");
+                                                                        setScanning(false);
+                                                                    }
+                                                                }
+                                                            },
+                                                            {
+                                                                text: "Gallery",
+                                                                onPress: async () => {
+                                                                    setScanning(true);
+                                                                    setScanStatus("Opening gallery...");
+                                                                    try {
+                                                                        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                                                                        if (status !== "granted") {
+                                                                            Alert.alert("Permission Denied", "Gallery access is required to use AI Scan.");
+                                                                            return;
+                                                                        }
+                                                                        const result = await ImagePicker.launchImageLibraryAsync({
+                                                                            mediaTypes: ['images'],
+                                                                            quality: 0.8,
+                                                                        });
+                                                                        if (!result.canceled && result.assets?.[0]) {
+                                                                            handleScanImage(result.assets[0]);
+                                                                        } else {
+                                                                            setScanStatus("");
+                                                                            setScanning(false);
+                                                                        }
+                                                                    } catch (e: any) {
+                                                                        Alert.alert("Error", e?.message || "AI Scan failed.");
+                                                                        setScanStatus("");
+                                                                        setScanning(false);
+                                                                    }
+                                                                }
+                                                            },
+                                                            { text: "Cancel", style: "cancel" }
+                                                        ]
+                                                    );
                                                 }
 
-                                                if (extractedData && !extractedData.error) {
-                                                    setFormData(prev => {
-                                                        const updated = { ...prev };
-                                                        for (const key of selectedEvent.keys) {
-                                                            if (extractedData[key] != null) {
-                                                                updated[key] = String(extractedData[key]);
-                                                            }
+                                                // Helper function to process the selected image
+                                                const handleScanImage = async (asset: ImagePicker.ImagePickerAsset) => {
+                                                    setScanStatus("AI is uploading image...");
+                                                    try {
+                                                        const formDataUpload = new FormData();
+                                                        formDataUpload.append("title", "ai_scan_" + Date.now());
+
+                                                        if (Platform.OS === 'web') {
+                                                            const response = await fetch(asset.uri);
+                                                            const blob = await response.blob();
+                                                            formDataUpload.append("file", blob, "scan.jpg");
+                                                        } else {
+                                                            formDataUpload.append("file", {
+                                                                uri: asset.uri,
+                                                                name: "scan.jpg",
+                                                                type: "image/jpeg",
+                                                            } as any);
                                                         }
-                                                        return updated;
-                                                    });
-                                                    setScanStatus("Complete!");
-                                                    setTimeout(() => setScanStatus(""), 2000);
-                                                } else {
-                                                    Alert.alert("Scan Failed", extractedData?.error || "Could not extract data.");
-                                                    setScanStatus("");
+
+                                                        const uploadRes = await documentsApi.upload(formDataUpload);
+                                                        const imageUrl = uploadRes.data.file_url;
+
+                                                        setScanStatus("Preparing MedGemma...");
+                                                        let extractedData: any;
+                                                        if (isOffline) {
+                                                            const prompt = `Extract medical data for these fields: ${selectedEvent?.keys.join(", ")}. Return ONLY a JSON object. Since I am offline, I cannot see the image, so please provide clear placeholder instructions for the user to manually enter ${selectedEvent?.keys.join(", ")} while mentioning the model name MedGemma.`;
+                                                            const response = await askAI(prompt);
+                                                            try {
+                                                                extractedData = JSON.parse(response);
+                                                            } catch {
+                                                                extractedData = {};
+                                                                selectedEvent?.keys.forEach(k => extractedData[k] = `[Manual ${k}]`);
+                                                            }
+                                                        } else {
+                                                            const aiRes = await agentApi.populateEventData({
+                                                                image_url: imageUrl,
+                                                                keys: selectedEvent?.keys || [],
+                                                            });
+                                                            extractedData = aiRes.data;
+                                                        }
+
+                                                        if (extractedData && !extractedData.error) {
+                                                            setFormData(prev => {
+                                                                const updated = { ...prev };
+                                                                for (const key of selectedEvent?.keys || []) {
+                                                                    if (extractedData[key] != null) {
+                                                                        updated[key] = String(extractedData[key]);
+                                                                    }
+                                                                }
+                                                                return updated;
+                                                            });
+                                                            setScanStatus("Complete!");
+                                                            setTimeout(() => setScanStatus(""), 2000);
+                                                        } else {
+                                                            Alert.alert("Scan Failed", extractedData?.error || "Could not extract data.");
+                                                            setScanStatus("");
+                                                        }
+                                                    } catch (e: any) {
+                                                        Alert.alert("Error", e?.message || "AI Scan failed processing.");
+                                                        setScanStatus("");
+                                                    } finally {
+                                                        setScanning(false);
+                                                    }
                                                 }
-                                            } catch (e: any) {
-                                                Alert.alert("Error", e?.message || "AI Scan failed.");
-                                                setScanStatus("");
-                                            } finally {
-                                                setScanning(false);
-                                            }
-                                        }}
-                                        disabled={scanning}
-                                        className="bg-blue-600 px-8 py-3 rounded-xl flex-row items-center justify-center gap-2 w-full"
-                                    >
-                                        {scanning ? <ActivityIndicator size="small" color="white" /> : <Camera size={18} color="white" />}
-                                        <Text className="text-white font-bold">{scanning ? scanStatus || "Processing..." : "Start AI Scan"}</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            )}
+                                            }}
+                                            disabled={scanning}
+                                            className="bg-blue-600 px-8 py-3 rounded-xl flex-row items-center justify-center gap-2 w-full"
+                                        >
+                                            {scanning ? <ActivityIndicator size="small" color="white" /> : <Camera size={18} color="white" />}
+                                            <Text className="text-white font-bold">{scanning ? scanStatus || "Processing..." : "Start AI Scan"}</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
 
-                            {/* Manual Form */}
-                            <Text className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-4">Manual Entry</Text>
-                            {(selectedEvent?.keys || []).length > 0 ? (
-                                <View className="gap-4">
-                                    {(selectedEvent?.keys || []).map(k => (
-                                        <View key={k}>
-                                            <Text className="text-gray-500 text-xs font-semibold mb-1.5 ml-1">{k}</Text>
-                                            <TextInput
-                                                className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-gray-900"
-                                                placeholder={`Type ${k.toLowerCase()}...`}
-                                                placeholderTextColor="#9CA3AF"
-                                                value={formData[k] || ""}
-                                                onChangeText={v => setFormData(p => ({ ...p, [k]: v }))}
-                                            />
-                                        </View>
-                                    ))}
-                                </View>
-                            ) : (
-                                <TextInput
-                                    className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-gray-900"
-                                    placeholder='{"status": "stable", "notes": "..."}'
-                                    placeholderTextColor="#9CA3AF"
-                                    value={rawJson}
-                                    onChangeText={setRawJson}
-                                    multiline
-                                    style={{ minHeight: 120, textAlignVertical: 'top' }}
-                                />
-                            )}
-                        </ScrollView>
+                                {/* Manual Form */}
+                                <Text className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-4">Manual Entry</Text>
+                                {(selectedEvent?.keys || []).length > 0 ? (
+                                    <View className="gap-4">
+                                        {(selectedEvent?.keys || []).map(k => (
+                                            <View key={k}>
+                                                <Text className="text-gray-500 text-xs font-semibold mb-1.5 ml-1">{k}</Text>
+                                                <TextInput
+                                                    className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-gray-900"
+                                                    placeholder={`Type ${k.toLowerCase()}...`}
+                                                    placeholderTextColor="#9CA3AF"
+                                                    value={formData[k] || ""}
+                                                    onChangeText={v => setFormData(p => ({ ...p, [k]: v }))}
+                                                />
+                                            </View>
+                                        ))}
+                                    </View>
+                                ) : (
+                                    <TextInput
+                                        className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-gray-900"
+                                        placeholder='{"status": "stable", "notes": "..."}'
+                                        placeholderTextColor="#9CA3AF"
+                                        value={rawJson}
+                                        onChangeText={setRawJson}
+                                        multiline
+                                        style={{ minHeight: 120, textAlignVertical: 'top' }}
+                                    />
+                                )}
+                            </ScrollView>
 
-                        {/* Footer */}
-                        <View className="p-6 bg-gray-50 border-t border-gray-100">
-                            <TouchableOpacity
-                                onPress={handleAppend}
-                                disabled={appending || scanning}
-                                className="w-full rounded-2xl py-4 items-center justify-center flex-row gap-2"
-                                style={{ backgroundColor: '#0D9488' }}
-                            >
-                                {appending ? <ActivityIndicator size="small" color="white" /> : <Plus size={18} color="white" />}
-                                <Text className="text-white font-bold text-base">
-                                    {appending ? "Saving..." : "Save Entry"}
-                                </Text>
-                            </TouchableOpacity>
+                            {/* Footer */}
+                            <View className="p-6 bg-gray-50 border-t border-gray-100">
+                                <TouchableOpacity
+                                    onPress={handleAppend}
+                                    disabled={appending || scanning}
+                                    className="w-full rounded-2xl py-4 items-center justify-center flex-row gap-2"
+                                    style={{ backgroundColor: '#0D9488' }}
+                                >
+                                    {appending ? <ActivityIndicator size="small" color="white" /> : <Plus size={18} color="white" />}
+                                    <Text className="text-white font-bold text-base">
+                                        {appending ? "Saving..." : "Save Entry"}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
-                    </View>
+                    </KeyboardAvoidingView>
                 </View>
             </Modal>
 

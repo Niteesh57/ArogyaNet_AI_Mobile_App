@@ -18,6 +18,7 @@ interface AuthContextType {
     isLoading: boolean;
     isAdmin: boolean;
     login: (email: string, password: string) => Promise<void>;
+    googleLogin: (token: string) => Promise<void>;
     logout: () => Promise<void>;
     updateProfile: (data: Partial<User>) => Promise<void>;
     refreshUser: () => Promise<void>;
@@ -28,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
     isLoading: true,
     isAdmin: false,
     login: async () => { },
+    googleLogin: async () => { },
     logout: async () => { },
     updateProfile: async () => { },
     refreshUser: async () => { },
@@ -69,6 +71,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await fetchUser();
     };
 
+    const googleLogin = async (token: string) => {
+        const res = await authApi.googleLogin(token);
+        const jwtToken = res.data.access_token;
+        await AsyncStorage.setItem("lh_token", jwtToken);
+        await fetchUser();
+    };
+
     const logout = async () => {
         await AsyncStorage.removeItem("lh_token");
         setUser(null);
@@ -90,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     return (
-        <AuthContext.Provider value={{ user, isLoading, isAdmin, login, logout, updateProfile, refreshUser }}>
+        <AuthContext.Provider value={{ user, isLoading, isAdmin, login, googleLogin, logout, updateProfile, refreshUser }}>
             {children}
         </AuthContext.Provider>
     );

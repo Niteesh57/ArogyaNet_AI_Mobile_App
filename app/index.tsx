@@ -6,9 +6,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { authApi } from "../lib/api";
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight } from "lucide-react-native";
 import api from "../lib/api";
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 
 export default function LoginScreen() {
-    const { login, user, isLoading } = useAuth();
+    const { login, googleLogin, user, isLoading } = useAuth();
     const [activeTab, setActiveTab] = useState<"signin" | "signup">("signin");
 
     // Sign In
@@ -21,6 +22,13 @@ export default function LoginScreen() {
     // Sign Up
     const [signupForm, setSignupForm] = useState({ full_name: "", email: "", password: "", confirmPassword: "" });
     const [signupLoading, setSignupLoading] = useState(false);
+
+    useEffect(() => {
+        GoogleSignin.configure({
+            webClientId: '994195201263-nl156b5t0elh72k9v4lho8mfrg7sv2lj.apps.googleusercontent.com',
+            offlineAccess: true,
+        });
+    }, []);
 
     useEffect(() => {
         if (user && !isLoading) {
@@ -55,9 +63,34 @@ export default function LoginScreen() {
         }
     };
 
-    const handleGoogleLogin = () => {
-        const baseURL = api.defaults.baseURL || "http://192.168.29.67:8000/api/v1";
-        Linking.openURL(`${baseURL}/auth/login/google`);
+    const handleGoogleLogin = async () => {
+        try {
+            await GoogleSignin.hasPlayServices();
+            const userInfo = await GoogleSignin.signIn();
+            const idToken = userInfo?.data?.idToken || userInfo?.idToken;
+
+            if (idToken) {
+                setLoading(true);
+                await googleLogin(idToken);
+                router.replace("/(tabs)/dashboard");
+            } else {
+                Alert.alert("Error", "Missing ID token from Google Sign-In");
+            }
+        } catch (error: any) {
+            if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+                // user cancelled the login flow
+            } else if (error.code === statusCodes.IN_PROGRESS) {
+                // operation (e.g. sign in) is in progress already
+            } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+                // play services not available or outdated
+                Alert.alert("Error", "Google Play Services are not available");
+            } else {
+                // some other error happened
+                Alert.alert("Google Login Error", error.message || "An unknown error occurred.");
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSignUp = async () => {
@@ -197,12 +230,15 @@ export default function LoginScreen() {
 
                                 {/* Google Auth Button */}
                                 <TouchableOpacity
-                                    onPress={handleGoogleLogin}
-                                    className="bg-white border border-gray-200 rounded-xl py-3.5 flex-row items-center justify-center"
+                                    disabled={true}
+                                    className="bg-gray-100 border border-gray-200 rounded-xl py-3.5 flex-row items-center justify-center opacity-60"
                                     style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 }}
                                 >
                                     <Text className="text-lg mr-2">G</Text>
-                                    <Text className="text-gray-700 font-semibold text-sm">Google</Text>
+                                    <Text className="text-gray-400 font-semibold text-sm">Google</Text>
+                                    <View className="bg-teal-100 rounded-full px-2 py-0.5 ml-2">
+                                        <Text className="text-teal-700 text-xs font-medium">Coming Soon</Text>
+                                    </View>
                                 </TouchableOpacity>
                             </View>
                         ) : (

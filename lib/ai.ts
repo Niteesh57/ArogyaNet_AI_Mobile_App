@@ -1,16 +1,32 @@
-import { initLlama, LlamaContext } from 'llama.rn';
+import { Platform } from 'react-native';
 import NetInfo from "@react-native-community/netinfo";
 import { agentApi } from "./api";
-import { Paths, File } from 'expo-file-system';
-import { Platform } from 'react-native';
+
+// llama.rn is native-only; importing it on web crashes the app
+let initLlama: any = null;
+type LlamaContext = any;
+
+if (Platform.OS !== 'web') {
+    const llamaModule = require('llama.rn');
+    initLlama = llamaModule.initLlama;
+}
+
+// expo-file-system Paths/File are also native-only
+let Paths: any = null;
+let File: any = null;
+if (Platform.OS !== 'web') {
+    const fsModule = require('expo-file-system');
+    Paths = fsModule.Paths;
+    File = fsModule.File;
+}
 
 // Configuration for Local Model
 export const MODEL_NAME = 'medgemma-Q3_K_M.gguf';
 
 // Documents path (where llama.rn can successfully read from, and where the download manager will save it)
-const documentFile = new File(Paths.document, MODEL_NAME);
+const documentFile = Platform.OS !== 'web' ? new File(Paths.document, MODEL_NAME) : null;
 
-export const getModelPath = () => documentFile.uri;
+export const getModelPath = () => documentFile?.uri ?? '';
 
 let llamaContext: LlamaContext | null = null;
 
@@ -97,7 +113,7 @@ export const askLocalAIStream = async (question: string, onToken: (token: string
             n_predict: 512,
             temperature: 0.7,
             stop: ["<end_of_turn>", "user:"],
-        }, (data) => {
+        }, (data: any) => {
             if (data.token) {
                 onToken(data.token);
             }
@@ -111,6 +127,7 @@ export const askLocalAIStream = async (question: string, onToken: (token: string
 
 // Helper to check if model exists for UI feedback
 export const isLocalModelAvailable = async () => {
+    if (Platform.OS === 'web' || !documentFile) return false;
     const info = Paths.info(documentFile.uri);
     return info.exists;
 };

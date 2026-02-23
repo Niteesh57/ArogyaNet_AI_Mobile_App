@@ -30,12 +30,13 @@
     },
     "extra": {
       "eas": {
-        "projectId": "2078a1eb-39e8-49f0-8caa-c68e89cb6dae"
+        "projectId": "223b4c0e-6e90-4e63-9ad6-2d735708a548"
       }
     },
     "plugins": [
       "expo-web-browser",
       "expo-asset"
-    ]
+    ],
+    "owner": "nagireddy1"
   }
 }

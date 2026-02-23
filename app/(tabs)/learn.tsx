@@ -253,9 +253,32 @@ export default function LearnScreen() {
                                         : { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 }
                                     }
                                 >
-                                    <Text className={`text-sm leading-5 ${msg.role === "user" ? "text-white" : "text-gray-700"}`}>
-                                        {formatBold(msg.content)}
-                                    </Text>
+                                    {msg.role === "assistant" && (msg.content.includes("<unused94>thought") || msg.content.includes("<unused94>\nthought") || msg.content.includes("<think>")) ? (
+                                        <View>
+                                            <View className="mb-2 p-2 bg-gray-50 rounded-lg border border-gray-100">
+                                                <Text className="text-xs font-bold text-gray-500 mb-1">Thinking Process</Text>
+                                                <Text className="text-xs text-gray-400">
+                                                    {formatBold(
+                                                        msg.content
+                                                            .split(/<unused95>|<\/think>/)[0]
+                                                            .replace(/<unused94>\n?thought\n?/, "")
+                                                            .replace(/<think>\n?/, "")
+                                                    )}
+                                                </Text>
+                                            </View>
+                                            {(msg.content.includes("<unused95>") || msg.content.includes("</think>")) && (
+                                                <Text className="text-sm leading-5 text-gray-700">
+                                                    {formatBold(
+                                                        msg.content.split(/<unused95>|<\/think>/)[1] || ""
+                                                    )}
+                                                </Text>
+                                            )}
+                                        </View>
+                                    ) : (
+                                        <Text className={`text-sm leading-5 ${msg.role === "user" ? "text-white" : "text-gray-700"}`}>
+                                            {formatBold(msg.content)}
+                                        </Text>
+                                    )}
                                 </View>
 
                                 {/* Metadata pills */}
