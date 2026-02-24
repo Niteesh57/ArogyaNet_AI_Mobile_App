@@ -42,7 +42,7 @@ export const useModelManager = () => {
 
         try {
             const headers: Record<string, string> = {};
-            const hfKey = process.env.EXPO_PUBLIC_HUGGINGFACE_API_KEY || """";
+            const hfKey = process.env.EXPO_PUBLIC_HUGGINGFACE_API_KEY || "";
 
             // Add auth token for huggingface URLs to support gated/private models
             if (url.includes("huggingface.co")) {
