@@ -1,0 +1,39 @@
+{
+    "project_info": {
+        "project_number": "270216039919",
+        "project_id": "lifehealth-44043",
+        "storage_bucket": "lifehealth-44043.firebasestorage.app"
+    },
+    "client": [
+        {
+            "client_info": {
+                "mobilesdk_app_id": "1:270216039919:android:9523adb461c5728fa83a1a",
+                "android_client_info": {
+                    "package_name": "com.anonymous.arogyaMobile"
+                }
+            },
+            "oauth_client": [
+                {
+                    "client_id": "270216039919-k8uaga67r4ohvvvvgtj8b0l9kekojfa8.apps.googleusercontent.com",
+                    "client_type": 3
+                }
+            ],
+            "api_key": [
+                {
+                    "current_key": "AIzaSyAwe58Bty21eag74HbbtFXVdyPN2bdYPRY"
+                }
+            ],
+            "services": {
+                "appinvite_service": {
+                    "other_platform_oauth_client": [
+                        {
+                            "client_id": "270216039919-k8uaga67r4ohvvvvgtj8b0l9kekojfa8.apps.googleusercontent.com",
+                            "client_type": 3
+                        }
+                    ]
+                }
+            }
+        }
+    ],
+    "configuration_version": "1"
+}

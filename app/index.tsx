@@ -25,7 +25,7 @@ export default function LoginScreen() {
 
     useEffect(() => {
         GoogleSignin.configure({
-            webClientId: '994195201263-nl156b5t0elh72k9v4lho8mfrg7sv2lj.apps.googleusercontent.com',
+            webClientId: '270216039919-k8uaga67r4ohvvvvgtj8b0l9kekojfa8.apps.googleusercontent.com',
             offlineAccess: true,
         });
     }, []);
@@ -240,6 +240,7 @@ export default function LoginScreen() {
                                         <Text className="text-teal-700 text-xs font-medium">Coming Soon</Text>
                                     </View>
                                 </TouchableOpacity>
+
                             </View>
                         ) : (
                             /* Sign Up Form */

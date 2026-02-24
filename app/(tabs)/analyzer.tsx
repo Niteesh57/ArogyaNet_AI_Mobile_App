@@ -8,7 +8,7 @@ import { Camera, Sparkles, X, FileText, Upload, RefreshCcw, WifiOff, Clock, Tras
 import * as ImagePicker from "expo-image-picker";
 import { documentsApi } from "../../lib/api";
 import { fetchStream } from "../../lib/streaming";
-import { askAI, isLocalModelAvailable } from "../../lib/ai";
+import { isLocalModelAvailable } from "../../lib/ai";
 import NetInfo from "@react-native-community/netinfo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Markdown from "react-native-markdown-display";
@@ -112,20 +112,17 @@ export default function AnalyzerScreen() {
                 return;
             }
 
-            // Generate generic offline response
-            setAnalyzing(true);
-            setStatus("Preparing local AI model...");
-            setSummary("");
-            try {
-                const prompt = "I have a medical report image here. I am offline, so please provide a general guide on how to read common medical reports while I wait for internet to do a full scan.";
-                const response = await askAI(prompt);
-                setSummary(response);
-                setStatus("Complete (Local Mode)");
-            } catch (err: any) {
-                Alert.alert("Local AI Error", "Could not run local model. Please download the MedGemma model from your Profile settings.");
-            } finally {
-                setAnalyzing(false);
-            }
+            // Current offline model is text-only and cannot analyze images
+            setSummary(
+                "## ⚠️ Offline Image Analysis Not Available\n\n" +
+                "The current on-device AI model is a **text-only** model and is **not capable of analyzing medical images** offline.\n\n" +
+                "Your report has been **queued** and will be automatically analyzed by our cloud AI (MedGemma) as soon as internet connectivity is restored.\n\n" +
+                "---\n\n" +
+                "### 🔮 Coming Soon\n\n" +
+                "We are working on integrating a **qualified multimodal medical model** that will support **full offline image analysis** directly on your device — no internet required.\n\n" +
+                "Stay tuned for future updates!"
+            );
+            setStatus("Complete (Queued)");
 
             // Save to offline queue for actual processing later
             const newItem: QueuedItem = {
